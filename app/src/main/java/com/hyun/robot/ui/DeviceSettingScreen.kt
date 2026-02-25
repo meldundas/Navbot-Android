@@ -315,7 +315,7 @@ fun DeviceSettingScreen(activity: DeviceSettingActivity = DeviceSettingActivity(
                                             .height(50.dp)
                                             .offset(y = 30.dp),
                                         shape = RoundedCornerShape(12.dp),
-                                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = Color(0x34A1A3A8),
                                             unfocusedBorderColor = Color(0x34A1A3A8),
                                         )

@@ -9,18 +9,14 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.ScanResult
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,8 +31,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -59,27 +53,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewModel
-import com.hjq.permissions.OnPermissionCallback
-import com.hjq.permissions.Permission
-import com.hjq.permissions.XXPermissions
 import com.hyun.robot.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -118,8 +103,7 @@ open class BaseActivity : ComponentActivity(){
     @Composable
     fun LoadingConnectingScreen(
         isConnecting: Boolean,
-        loadingText :String,
-        onTimeout: () -> Unit
+        loadingText :String
     ) {
         var dotCount by remember { mutableStateOf(1) }
         Box(
@@ -207,17 +191,6 @@ open class BaseActivity : ComponentActivity(){
         }
     }
 
-    class JoystickFilter(private val alpha: Float = 0.3f) {
-        private var filteredX = 0f
-        private var filteredY = 0f
-
-        fun filter(input: Offset): Offset {
-            filteredX = alpha * input.x + (1 - alpha) * filteredX
-            filteredY = alpha * input.y + (1 - alpha) * filteredY
-            return Offset(filteredX, filteredY)
-        }
-    }
-
   // wifi
     @OptIn(ExperimentalMaterial3Api::class)
     @SuppressLint("LaunchDuringComposition")
@@ -231,29 +204,32 @@ open class BaseActivity : ComponentActivity(){
         var wifiList by remember { mutableStateOf<List<ScanResult>>(emptyList()) }
         var isLoading by remember { mutableStateOf(false) }
         var showWifiDisabledWarning by remember { mutableStateOf(false) }
-        var showPermissionWarning by remember { mutableStateOf(false) }
         val wifiManager = remember { context.getSystemService(WIFI_SERVICE) as WifiManager }
         var showPasswordAlert by remember { mutableStateOf(false) }
         var wifiPassword by remember { mutableStateOf("") }
         val wifiSsid by remember { mutableStateOf("") }
         val scope = rememberCoroutineScope()
         var lastScanTime by remember { mutableStateOf(0L) }
-        fun canScanWifi(): Boolean {
-            return (ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED) && wifiManager.isWifiEnabled
+
+        val permissions = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
         }
 
-        val locationPermissionLauncher = rememberLauncherForActivityResult(
-            ActivityResultContracts.RequestPermission()
-        ) { isGranted ->
-            if (isGranted) {
-                startWifiScan(wifiManager, scope, context, ::canScanWifi,
-                    { isLoading = true }) { showPermissionWarning = false }
-            } else {
-                showPermissionWarning = true
+        val multiplePermissionsLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissionsResult ->
+            val allGranted = permissionsResult.all { it.value }
+            if (!allGranted) {
+                showWifiDisabledWarning = true
             }
+        }
+
+        fun canScanWifi(): Boolean {
+            return permissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED } && wifiManager.isWifiEnabled
         }
 
         fun startWifiScan() {
@@ -261,7 +237,7 @@ open class BaseActivity : ComponentActivity(){
                 if (!wifiManager.isWifiEnabled) {
                     showWifiDisabledWarning = true
                 } else {
-                    locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                    multiplePermissionsLauncher.launch(permissions.toTypedArray())
                 }
                 return
             }
@@ -277,7 +253,7 @@ open class BaseActivity : ComponentActivity(){
                     }
                 } catch (e: SecurityException) {
                     withContext(Dispatchers.Main) {
-                        showPermissionWarning = true
+                        showWifiDisabledWarning = true
                     }
                 }
             }
@@ -325,26 +301,6 @@ open class BaseActivity : ComponentActivity(){
         LaunchedEffect(Unit) {
             startWifiScan()
         }
-
-        XXPermissions.with(context)
-            .permission(Permission.ACCESS_FINE_LOCATION)
-            .permission(Permission.ACCESS_COARSE_LOCATION)
-            .permission(Permission.NEARBY_WIFI_DEVICES)
-            .request(object : OnPermissionCallback {
-                override fun onGranted(permissions: MutableList<String>, allGranted: Boolean) {
-                    if (!allGranted) {
-                        showWifiDisabledWarning = false
-                        return
-                    }
-                }
-
-                override fun onDenied(permissions: MutableList<String>, doNotAskAgain: Boolean) {
-                    if (doNotAskAgain) {
-                        showWifiDisabledWarning = true
-                        XXPermissions.startPermissionActivity(context, permissions)
-                    }
-                }
-            })
 
         if (showPasswordAlert) {
             AlertDialog(
@@ -430,7 +386,7 @@ open class BaseActivity : ComponentActivity(){
                                         context = context,
                                         result = result,
                                         onClick = {
-                                            onConnectWifiToBlue(result)
+                                            onConnect(result)
                                         }
                                     )
                                 }
@@ -449,7 +405,7 @@ open class BaseActivity : ComponentActivity(){
                                 lastScanTime = System.currentTimeMillis()
                             }
                         } else {
-                            showPermissionWarning = true
+                            showWifiDisabledWarning = true
                         }
                     },
                     enabled = wifiManager.isWifiEnabled
@@ -466,9 +422,6 @@ open class BaseActivity : ComponentActivity(){
             },
             modifier = modifier
         )
-    }
-
-    fun onConnectWifiToBlue(result: ScanResult) {
     }
 
     private fun startWifiScan(

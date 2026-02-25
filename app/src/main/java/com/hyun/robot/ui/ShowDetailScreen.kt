@@ -414,8 +414,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
         if (MyApplication.bleManager.connectDev?.isConnected != true) {
             activity.LoadingConnectingScreen(
                 isConnecting = showSplash,
-                loadingText = loadingText,
-                onTimeout = { showSplash = false })
+                loadingText = loadingText)
             toConnectDevice()
         } else {
             bDevice = MyApplication.bleManager.connectDev!!.bluetoothDevice
