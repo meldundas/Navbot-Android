@@ -91,8 +91,8 @@ private var baseHeight: Byte = BleCommand.BASE_HEIGHT
 private var roll: Byte = BleCommand.EMPTY_BYTE
 private var linearVel: Byte = BleCommand.EMPTY_BYTE
 private var angularVel: Byte = BleCommand.EMPTY_BYTE
-private var joyX: Byte = BleCommand.EMPTY_BYTE
-private var joyY: Byte = BleCommand.EMPTY_BYTE
+private var leftJoyY: Byte = BleCommand.EMPTY_BYTE
+private var rightJoyY: Byte = BleCommand.EMPTY_BYTE
 private var stableStatus: Byte = BleCommand.BYTE_01
 private var isToggleOn = false
 private var showDialog = false
@@ -114,11 +114,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
     var isToggleReady by remember { mutableStateOf(false) }
 
     connectCallback = object : BleConnectCallback {
-        override fun onFailure(
-            failureCode: Int,
-            info: String?,
-            device: BleDevice?
-        ) {
+        override fun onFailure(failureCode: Int, info: String?, device: BleDevice?) {
             showLoading = false
             MyApplication.bleManager.connectDev = null
             connectCount++
@@ -127,11 +123,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
             isToggleOn = false
         }
 
-        override fun onStart(
-            startSuccess: Boolean,
-            info: String?,
-            device: BleDevice?
-        ) {
+        override fun onStart(startSuccess: Boolean, info: String?, device: BleDevice?) {
             loadingText = "Connecting"
             showSplash = true
         }
@@ -149,16 +141,13 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
             }
             showSplash = false
             connectCount = 0
-            joyY = 0x05
+            leftJoyY = 0x00
+            rightJoyY = 0x00
             sendBleJoyXYData()
             showToast(content, "Connected")
         }
 
-        override fun onDisconnected(
-            info: String?,
-            status: Int,
-            device: BleDevice?
-        ) {
+        override fun onDisconnected(info: String?, status: Int, device: BleDevice?) {
             isConnectDevice = false
             isToggleOn = false
             showToast(content, "Disconnected")
@@ -184,9 +173,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                     navigationIcon = {
                         IconButton(
                             modifier = Modifier.size(40.dp),
-                            onClick = {
-                                gotoHome = true
-                            },
+                            onClick = { gotoHome = true },
                         ) {
                             Icon(
                                 modifier = Modifier.size(40.dp),
@@ -196,10 +183,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                         }
                     },
                     title = {
-
-                        Row(
-                            horizontalArrangement = Arrangement.Start
-                        ) {
+                        Row(horizontalArrangement = Arrangement.Start) {
                             Text(
                                 modifier = Modifier.padding(top = 10.dp),
                                 text = deviceName,
@@ -207,10 +191,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                                 fontSize = 18.sp,
                                 style = MaterialTheme.typography.titleLarge,
                             )
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 40.dp, end = 8.dp)
-                            ) {
+                            Box(modifier = Modifier.padding(start = 40.dp, end = 8.dp)) {
                                 Text(
                                     fontSize = 14.sp,
                                     text = "ROBOT GO",
@@ -232,16 +213,15 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                                         }
                                     }
                                 }
-                            } , colors = SwitchDefaults.colors(
+                            }, colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
-                                checkedTrackColor =  Color(0xFF007AFF),
+                                checkedTrackColor = Color(0xFF007AFF),
                                 uncheckedThumbColor = Color.White,
                                 uncheckedTrackColor = Color.Gray,
                             ))
                         }
                     },
                     actions = {
-
                         Row(
                             modifier = Modifier.size(40.dp),
                             horizontalArrangement = Arrangement.End
@@ -254,16 +234,12 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                                             if (isToggleOn) {
                                                 toConnectDevice(content)
                                             } else {
-                                                MyApplication.bleManager.disconnectDevice(
-                                                    content.deviceAddress
-                                                )
+                                                MyApplication.bleManager.disconnectDevice(content.deviceAddress)
                                             }
                                         }
                                     }
                                 },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .padding(end = 10.dp),
+                                modifier = Modifier.size(40.dp).padding(end = 10.dp),
                             ) {
                                 Icon(
                                     painter = painterResource(
@@ -284,107 +260,56 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                 Spacer(modifier = Modifier.weight(1f))
 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(7f)
-                            .padding(16.dp)
-                    ) {
-                        Joystick(content)
+                    // Left Tank Joystick
+                    Box(modifier = Modifier.weight(4f).padding(16.dp)) {
+                        Joystick(
+                            context = content,
+                            onValueChange = { offset ->
+                                if (isToggleOn && bDevice != null) {
+                                    leftJoyY = ((-offset.y).coerceIn(-100f, 100f)).toInt().toByte()
+                                    sendBleJoyXYData()
+                                }
+                            },
+                            onRelease = {
+                                leftJoyY = 0x00
+                                sendBleJoyXYData()
+                            }
+                        )
                     }
-                    Box(
-                        modifier = Modifier
-                            .weight(3f)
-                            .fillMaxHeight()
-                            .fillMaxWidth()
-                            .padding(horizontal = 2.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            VerticalSliderView(content, "Base Height", "mm", 0.0f, 53, 32,true)
+
+                    // Middle Sliders
+                    Row(modifier = Modifier.weight(10f)) {
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 2.dp), contentAlignment = Alignment.Center) {
+                            VerticalSliderView(content, "Base Height", "mm", 0.0f, 53, 32, true)
+                        }
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 2.dp), contentAlignment = Alignment.Center) {
+                            VerticalSliderView(content, "roll", "°", 0.5f, 60, -30, false)
+                        }
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 2.dp), contentAlignment = Alignment.Center) {
+                            VerticalSliderView(content, "Linear Vel", "mm/s", 0.5f, 400, -200, false)
+                        }
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 2.dp), contentAlignment = Alignment.Center) {
+                            VerticalSliderView(content, "Angular Vel", "°/s", 0.5f, 200, -100, false)
                         }
                     }
-                    Box(
-                        modifier = Modifier
-                            .weight(3f)
-                            .fillMaxHeight()
-                            .fillMaxWidth()
-                            .padding(horizontal = 2.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            VerticalSliderView(content, "roll", "°", 0.5f, 60, -30,false)
-                        }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(3f)
-                            .fillMaxHeight()
-                            .fillMaxWidth()
-                            .padding(horizontal = 2.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            VerticalSliderView(content, "Linear Vel", "mm/s", 0.5f, 400, -200,false)
-                        }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(3f)
-                            .fillMaxHeight()
-                            .fillMaxWidth()
-                            .padding(horizontal = 2.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            VerticalSliderView(content, "Angular Vel", "°/s", 0.5f, 200, -100,false)
-                        }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .padding(bottom = 40.dp)
-                            .weight(4f)
-                            .fillMaxHeight(),
-                        contentAlignment = Alignment.BottomEnd,
-                    ) {
+
+                    // Reset Button
+                    Box(modifier = Modifier.padding(bottom = 40.dp).weight(3f).fillMaxHeight(), contentAlignment = Alignment.BottomCenter) {
                         IconButton(
                             onClick = {
                                 bDevice = MyApplication.bleManager.connectingDevice
                                 if (!isReady) {
                                     showToast(content, "Please turn on the ‘ROBOT GO’ button first.")
                                 } else if (isToggleOn && bDevice != null) {
-                                    Handler(Looper.getMainLooper()).postDelayed(
-                                        {
-                                            sendBleJumpData()
-                                        },
-                                        100
-                                    )
-                                } else {
-                                    if (!isToggleOn) {
-                                        toConnectDevice(content)
-                                    }
+                                    Handler(Looper.getMainLooper()).postDelayed({ sendBleJumpData() }, 100)
+                                } else if (!isToggleOn) {
+                                    toConnectDevice(content)
                                 }
                             },
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
+                            modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.ic_reset),
@@ -393,21 +318,32 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                             )
                         }
                     }
+
+                    // Right Tank Joystick
+                    Box(modifier = Modifier.weight(4f).padding(16.dp)) {
+                        Joystick(
+                            context = content,
+                            onValueChange = { offset ->
+                                if (isToggleOn && bDevice != null) {
+                                    rightJoyY = ((-offset.y).coerceIn(-100f, 100f)).toInt().toByte()
+                                    sendBleJoyXYData()
+                                }
+                            },
+                            onRelease = {
+                                rightJoyY = 0x00
+                                sendBleJoyXYData()
+                            }
+                        )
+                    }
                 }
             }
         }
-        if (gotoHome) {
-            content.BackToHome()
-        }
-        if (showDialog) {
-            content.WifiListDialog(onDismiss = { showDialog = false }, onConnect = {})
-        }
+        if (gotoHome) content.BackToHome()
+        if (showDialog) content.WifiListDialog(onDismiss = { showDialog = false }, onConnect = {})
     }
     if (showSplash) {
         if (MyApplication.bleManager.connectDev?.isConnected != true) {
-            content.LoadingConnectingScreen(
-                isConnecting = showSplash,
-                loadingText = loadingText)
+            content.LoadingConnectingScreen(isConnecting = showSplash, loadingText = loadingText)
             toConnectDevice(content)
         } else {
             bDevice = MyApplication.bleManager.connectDev!!.bluetoothDevice
@@ -428,8 +364,8 @@ private fun sendBleJoyXYData() {
             linearW = linearVel,
             angular = angularVel,
             stable = stableStatus,
-            joyX = joyX,
-            joyY = joyY
+            joyY = leftJoyY,   // Tank Drive: Left Track
+            joyX = rightJoyY   // Tank Drive: Right Track
         )
     )
 }
@@ -461,16 +397,12 @@ fun sendBleJumpData() {
             dir = 0x01
         )
     )
-
 }
 
 private fun toConnectDevice(activity: DeviceDetailActivity) {
     scope.launch {
         withContext(Dispatchers.IO) {
-            MyApplication.bleManager.connectToDevice(
-                activity.deviceAddress,
-                connectCallback!!
-            )
+            MyApplication.bleManager.connectToDevice(activity.deviceAddress, connectCallback!!)
         }
     }
 }
@@ -486,7 +418,6 @@ private fun showToast(context: Context, message: String) {
 class JoystickFilter(private val alpha: Float = 0.3f) {
     private var filteredX = 0f
     private var filteredY = 0f
-
     fun filter(input: Offset): Offset {
         filteredX = alpha * input.x + (1 - alpha) * filteredX
         filteredY = alpha * input.y + (1 - alpha) * filteredY
@@ -494,50 +425,20 @@ class JoystickFilter(private val alpha: Float = 0.3f) {
     }
 }
 
-
 @Composable
-fun PermissionHandler(
-    onPermissionsGranted: () -> Unit,
-    onPermissionsDenied: () -> Unit
-) {
+fun PermissionHandler(onPermissionsGranted: () -> Unit, onPermissionsDenied: () -> Unit) {
     val context = LocalContext.current
     val permissionsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        if (permissions.all { it.value }) {
-            onPermissionsGranted()
-        } else {
-            onPermissionsDenied()
-        }
+        if (permissions.all { it.value }) onPermissionsGranted() else onPermissionsDenied()
     }
 
     val requiredPermissions = remember {
         when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                // Android 12+ (API 31+)
-                arrayOf(
-                    Manifest.permission.BLUETOOTH_SCAN,
-                    Manifest.permission.BLUETOOTH_CONNECT
-                )
-            }
-
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
-                // Android 10-11 (API 29-30)
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.BLUETOOTH,
-                    Manifest.permission.BLUETOOTH_ADMIN
-                )
-            }
-
-            else -> {
-                // Android 6.0-9 (API 23-28)
-                arrayOf(
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.BLUETOOTH,
-                    Manifest.permission.BLUETOOTH_ADMIN
-                )
-            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN)
+            else -> arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN)
         }
     }
     val currentActivity = LocalContext.current as Activity
@@ -546,13 +447,9 @@ fun PermissionHandler(
         val missingPermissions = requiredPermissions.filter {
             ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
         }
-
         when {
             missingPermissions.isEmpty() -> onPermissionsGranted()
-            missingPermissions.any { perm ->
-                ActivityCompat.shouldShowRequestPermissionRationale(currentActivity, perm)
-            } -> showRationale = true
-
+            missingPermissions.any { perm -> ActivityCompat.shouldShowRequestPermissionRationale(currentActivity, perm) } -> showRationale = true
             else -> permissionsLauncher.launch(requiredPermissions)
         }
     }
@@ -566,49 +463,28 @@ fun PermissionHandler(
                 TextButton(onClick = {
                     permissionsLauncher.launch(requiredPermissions)
                     showRationale = false
-                }) {
-                    Text("Continue")
-                }
+                }) { Text("Continue") }
             },
             dismissButton = {
-                TextButton(onClick = { showRationale = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showRationale = false }) { Text("Cancel") }
             }
         )
     }
 
     val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     val bluetoothAdapter = bluetoothManager.adapter
-    
-    if (bluetoothAdapter != null) {
-        val isEnabled = bluetoothAdapter.isEnabled
-        if (!isEnabled) {
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            currentActivity.startActivityForResult(enableBtIntent, BaseBlueManager.REQUEST_ENABLE_BT)
-        }
+    if (bluetoothAdapter != null && !bluetoothAdapter.isEnabled) {
+        val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+        currentActivity.startActivityForResult(enableBtIntent, BaseBlueManager.REQUEST_ENABLE_BT)
     }
 }
 
 @Composable
-fun VerticalSlider(
-    context: Context,
-    maxHeight: Dp = 200.dp,
-    initialProgress: Float = 0.5f,
-    onProgressChanged: (Float) -> Unit,
-    canDrag: Boolean
-) {
+fun VerticalSlider(context: Context, maxHeight: Dp = 200.dp, initialProgress: Float = 0.5f, onProgressChanged: (Float) -> Unit, canDrag: Boolean) {
     val cornerRadius = 30.dp
     val maxHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
     val cornerRadiusPx = with(LocalDensity.current) { cornerRadius.toPx() }
-    var progressHeight by remember {
-        mutableFloatStateOf(
-            initialProgress.coerceIn(
-                0f,
-                1f
-            ) * maxHeightPx
-        )
-    }
+    var progressHeight by remember { mutableFloatStateOf(initialProgress.coerceIn(0f, 1f) * maxHeightPx) }
     val animatedHeight by animateFloatAsState(targetValue = progressHeight, label = "")
 
     Box(
@@ -619,9 +495,7 @@ fun VerticalSlider(
                 detectVerticalDragGestures { _, dragAmount ->
                     if (!isReady) {
                         showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
-                    }else if(!canDrag){
-
-                    }else {
+                    } else if (canDrag) {
                         val newHeight = (progressHeight - dragAmount).coerceIn(0f, maxHeightPx)
                         progressHeight = newHeight
                         onProgressChanged(newHeight / maxHeightPx)
@@ -641,66 +515,29 @@ fun VerticalSlider(
 }
 
 @Composable
-fun VerticalSliderView(
-    context: Context,
-    verticalName: String,
-    verticalUnit: String,
-    baseVolume: Float,
-    verticalPlusValue: Int,
-    verticalAddValue: Int,
-    canDrag:Boolean
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxSize()
-    ) {
+fun VerticalSliderView(context: Context, verticalName: String, verticalUnit: String, baseVolume: Float, verticalPlusValue: Int, verticalAddValue: Int, canDrag: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize()) {
         var volume by remember { mutableFloatStateOf(baseVolume) }
-
         VerticalSlider(
             context = context,
             initialProgress = volume,
             onProgressChanged = {
-                if (!isReady) {
-                    showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
-                }else{
+                if (isReady) {
                     volume = it
-                    baseHeight =
-                        BleCommand.intToUnsignedByte((volume * verticalPlusValue + verticalAddValue).toInt())
-                    if (!isReady) {
-                        showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
-                    } else if (isToggleOn) {
-                        if (showLoading) {
-                            toConnectDevice(context as DeviceDetailActivity)
-                        } else {
+                    baseHeight = BleCommand.intToUnsignedByte((volume * verticalPlusValue + verticalAddValue).toInt())
+                    if (isToggleOn) {
+                        if (showLoading) toConnectDevice(context as DeviceDetailActivity)
+                        else {
                             bDevice = MyApplication.bleManager.connectingDevice
                             sendBleSettingData()
                         }
-                    } else {
-                        toConnectDevice(context as DeviceDetailActivity)
-                    }
-                }
+                    } else toConnectDevice(context as DeviceDetailActivity)
+                } else showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
             },
             canDrag = canDrag
         )
-
-        Text(
-            text = "${(volume * verticalPlusValue + verticalAddValue).toInt()}${verticalUnit}",
-            textAlign = TextAlign.Center,
-            fontSize = 8.sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp)
-        )
-
-        Text(
-            text = verticalName,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            fontSize = 10.sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp)
-        )
+        Text(text = "${(volume * verticalPlusValue + verticalAddValue).toInt()}${verticalUnit}", textAlign = TextAlign.Center, fontSize = 8.sp, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+        Text(text = verticalName, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, fontSize = 10.sp, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
     }
 }
 
@@ -717,50 +554,15 @@ fun Offset.applyDeadZone(threshold: Float = 2f): Offset {
 fun Joystick(
     context: Context,
     modifier: Modifier = Modifier,
-    joystickSize: Dp = 130.dp
+    joystickSize: Dp = 130.dp,
+    onValueChange: (Offset) -> Unit,
+    onRelease: () -> Unit
 ) {
     val radius = joystickSize / 2
     val center = remember { Offset(0.5f, 0.5f) }
     var buttonOffset by remember { mutableStateOf(Offset(0f, 0f)) }
-    var isJoystickActive = false
     val kalmanFilter = remember { BaseActivity.KalmanFilterProcessor() }
-    var direction by remember { mutableStateOf(Offset(0f, 0f)) }
     val filter = remember { JoystickFilter() }
-    bDevice = MyApplication.bleManager.connectingDevice
-
-    fun positionChange(raw1: Offset) {
-        if (isToggleOn && bDevice != null) {
-            val raw = kalmanFilter.process(raw1)
-            direction = raw
-            val directionAdjusted = Offset(x = raw.y, y = -raw.x)
-            val normalizedDirection = directionAdjusted.normalize()
-            val processed = directionAdjusted
-                .applyDeadZone(5f)
-                .let { filter.filter(it) }
-            val clamped = Offset(
-                x = processed.x.coerceIn(-100f, 100f),
-                y = processed.y.coerceIn(-100f, 100f)
-            )
-            val directionAdjusted1 = Offset(x = -raw1.y, y = -raw1.x)
-            val normalizedDirection1 = directionAdjusted1.normalize()
-
-            if (normalizedDirection1 != Offset(
-                    0f,
-                    0f
-                ) && raw1.y != 0.0f && raw1.x != 0.0f
-            ) {
-                isJoystickActive = true
-                sendJoystickData(context as DeviceDetailActivity, clamped)
-            } else {
-                if (isJoystickActive) {
-                    isJoystickActive = false
-                }
-            }
-            if (isJoystickActive) {
-                sendJoystickData(context as DeviceDetailActivity, direction)
-            }
-        }
-    }
 
     Box(
         modifier = modifier
@@ -772,42 +574,21 @@ fun Joystick(
                             showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
                         } else {
                             val newOffset = Offset(
-                                x = (buttonOffset.x + dragAmount.x).coerceIn(
-                                    -radius.toPx(),
-                                    radius.toPx()
-                                ),
-                                y = (buttonOffset.y + dragAmount.y).coerceIn(
-                                    -radius.toPx(),
-                                    radius.toPx()
-                                )
+                                x = (buttonOffset.x + dragAmount.x).coerceIn(-radius.toPx(), radius.toPx()),
+                                y = (buttonOffset.y + dragAmount.y).coerceIn(-radius.toPx(), radius.toPx())
                             )
                             buttonOffset = newOffset
-                            val normalizedX =
-                                (buttonOffset.x / radius.toPx()).coerceIn(-1f..1f) * 100
-                            val normalizedY =
-                                (buttonOffset.y / radius.toPx()).coerceIn(-1f..1f) * 100
-                            positionChange(Offset(normalizedX, normalizedY))
+                            val normalizedX = (buttonOffset.x / radius.toPx()).coerceIn(-1f..1f) * 100
+                            val normalizedY = (buttonOffset.y / radius.toPx()).coerceIn(-1f..1f) * 100
+                            
+                            val filteredRaw = kalmanFilter.process(Offset(normalizedX, normalizedY))
+                            val processed = filteredRaw.applyDeadZone(5f).let { filter.filter(it) }
+                            onValueChange(processed)
                         }
                     },
                     onDragEnd = {
-                        if (!isReady) {
-                            showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
-                        } else{
-                            buttonOffset = Offset(0f, 0f)
-                            joyX = 0X00
-                            joyY = 0X00
-                            isJoystickActive = false
-                            if (!showLoading && bDevice != null) {
-                                Handler(Looper.getMainLooper()).postDelayed(
-                                    {
-                                        sendBleJoyXYData()
-                                    },
-                                    100
-                                )
-                            } else {
-                                toConnectDevice(context as DeviceDetailActivity)
-                            }
-                        }
+                        buttonOffset = Offset(0f, 0f)
+                        onRelease()
                     }
                 )
             }
@@ -815,41 +596,9 @@ fun Joystick(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val canvasSize = size
-            val absoluteCenter = Offset(
-                x = canvasSize.width * center.x,
-                y = canvasSize.height * center.y
-            )
+            val absoluteCenter = Offset(x = canvasSize.width * center.x, y = canvasSize.height * center.y)
             val finalPosition = absoluteCenter + buttonOffset
-            drawCircle(
-                color = Color(0xFF007AFF),
-                radius = radius.toPx() * 0.4f,
-                center = finalPosition
-            )
+            drawCircle(color = Color(0xFF007AFF), radius = radius.toPx() * 0.4f, center = finalPosition)
         }
     }
-}
-
-private fun Offset.normalize(): Offset {
-    val length = kotlin.math.hypot(x.toDouble(), y.toDouble()).toFloat()
-    return Offset(x / length, y / length)
-}
-
-private fun sendJoystickData(activity: DeviceDetailActivity, direction: Offset) {
-    val (joyDataX, joyDataY) = when {
-        direction.isSpecified -> {
-            val clampedY = (-direction.y).coerceIn(-100f, 100f)
-            val clampedX = (-direction.x).coerceIn(-100f, 100f)
-            clampedY.toInt().toByte() to clampedX.toInt().toByte()
-        }
-
-        else -> 0.toByte() to 0.toByte()
-    }
-    joyX = joyDataX
-    joyY = joyDataY
-    if (!showLoading && bDevice != null) {
-        sendBleJoyXYData()
-    } else {
-        toConnectDevice(activity)
-    }
-
 }
