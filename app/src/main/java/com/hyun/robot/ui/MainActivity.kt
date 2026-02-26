@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -64,7 +63,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -75,8 +73,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat.startActivity
-import com.ficat.easyble.BleManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.hyun.robot.MyApplication
 import com.hyun.robot.MyApplication.Companion.bleManager
 import com.hyun.robot.R
@@ -103,7 +102,14 @@ class MainActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN
+        
+        // Fix: Replace deprecated systemUiVisibility with WindowInsetsControllerCompat
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.getInsetsController(window, window.decorView).let { controller ->
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        
         actionBar?.hide()
         context = this
         MyApplication.isFirstDeviceDetail = true
@@ -113,7 +119,6 @@ class MainActivity : BaseActivity() {
                 LoadingScreen(onTimeout = { showSplash = false })
             } else {
                 MainScreen()
-                showSplash = false
             }
         }
         requestBLEPermission()
@@ -127,11 +132,11 @@ class MainActivity : BaseActivity() {
 
 @Composable
 fun AddDevice() {
-    val intent = Intent(LocalContext.current, AddDeviceActivity::class.java)
-    var bundle = Bundle()
     val context = LocalContext.current
+    val intent = Intent(context, AddDeviceActivity::class.java)
     LaunchedEffect(Unit) {
-        startActivity(context, intent, bundle)
+        // Fix: Use context.startActivity(intent) instead of deprecated static startActivity
+        context.startActivity(intent)
     }
 }
 
@@ -143,7 +148,7 @@ fun AddDevice() {
 )
 fun MainScreen() {
     bleManager = RobotBleManager(LocalContext.current)
-    var test = BleManagerDevice.BluetoothManagerDevice()
+    val test = BleManagerDevice.BluetoothManagerDevice()
     test.robotName = "111"
     test.address = "2222"
     bleManager.pairedDevices.add(test)
@@ -231,15 +236,15 @@ fun MainScreen() {
 
 @SuppressLint("MissingPermission")
 @Composable
-fun showDetail(device: BleManagerDevice.BluetoothManagerDevice, deviceName: String) {
-    val intent = Intent(LocalContext.current, DeviceDetailActivity::class.java).apply {
+fun ShowDetail(device: BleManagerDevice.BluetoothManagerDevice, deviceName: String) {
+    val context = LocalContext.current
+    val intent = Intent(context, DeviceDetailActivity::class.java).apply {
         putExtra("DEVICE_ADDRESS", device.address)
         putExtra("DEVICE_NAME", deviceName)
     }
-    var bundle = Bundle()
-    val context = LocalContext.current
     LaunchedEffect(Unit) {
-        startActivity(context, intent, bundle)
+        // Fix: Use context.startActivity(intent) instead of deprecated static startActivity
+        context.startActivity(intent)
     }
 }
 
@@ -257,7 +262,18 @@ private fun GridItem(
 ) {
     var isShowDetail by remember { mutableStateOf(false) }
     val backgroundColor = Color.White
-    var deviceName by remember { mutableStateOf("") }
+    
+    // Fix: Properly handle nullable values to avoid the redundant Elvis operator warning 
+    // and prevent literal "null" strings in the UI.
+    val deviceName = when {
+        !device.robotName.isNullOrEmpty() -> device.robotName!!
+        !device.name.isNullOrEmpty() || !device.address.isNullOrEmpty() -> {
+            val name = device.name ?: ""
+            val suffix = device.address?.let { getFirst8CharsOfMac(it) } ?: ""
+            name + suffix
+        }
+        else -> "Unknown"
+    }
 
     Box(
         modifier = modifier
@@ -273,11 +289,6 @@ private fun GridItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            deviceName =
-                (device.name + device.address?.let { getFirst8CharsOfMac(it) }) ?: "Unknown"
-            if (device.robotName != null) {
-                deviceName = device.robotName!!
-            }
             RobotItemTopView(
                 initialText = deviceName,
                 device = device,
@@ -313,7 +324,7 @@ private fun GridItem(
             }
 
             if (isShowDetail) {
-                showDetail(device, deviceName)
+                ShowDetail(device, deviceName)
             }
         }
     }
@@ -326,7 +337,7 @@ fun BatteryIndicator(
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier) {
-        var canvasColor = when {
+        val canvasColor = when {
             level < 20 -> Color.Red
             level < 50 -> Color.Yellow
             else -> Color.Green
@@ -358,79 +369,70 @@ fun BatteryIndicator(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShowRobotSettingModal(
-    showSettings: Boolean,
     device: BleManagerDevice.BluetoothManagerDevice,
     onDismiss: () -> Unit,
     onShowDialog: (Boolean) -> Unit,
     onShowSettingDialog: (Boolean) -> Unit,
 ) {
-    var showDialog by remember { mutableStateOf(showSettings) }
-    if (showDialog) {
-        Dialog(
-            onDismissRequest = {},
-            properties = DialogProperties(usePlatformDefaultWidth = false)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .wrapContentSize()
+                .height(360.dp)
+                .wrapContentHeight(Alignment.Bottom),
+            shape = RoundedCornerShape(24.dp),
         ) {
-            Card(
-                modifier = Modifier
-                    .wrapContentSize()
-                    .height(360.dp)
-                    .wrapContentHeight(Alignment.Bottom),
-                shape = RoundedCornerShape(24.dp),
+            Row(
+                modifier = Modifier.padding(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(8.dp)
-                ) {
-                    IconButton(modifier = Modifier.size(70.dp), onClick = {
-                        showDialog = false
-                        onDismiss()
-                        onShowDialog(true)
-                    }) {
-                        Icon(
-                            tint = Color.Black,
-                            painter = painterResource(R.drawable.ic_item_rename),
-                            contentDescription = "Rename",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(12.dp)
-                        )
-                    }
+                IconButton(modifier = Modifier.size(70.dp), onClick = {
+                    onDismiss()
+                    onShowDialog(true)
+                }) {
+                    Icon(
+                        tint = Color.Black,
+                        painter = painterResource(R.drawable.ic_item_rename),
+                        contentDescription = "Rename",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                    )
+                }
 
-                    IconButton(modifier = Modifier.size(70.dp), onClick = {
-                        showDialog = false
-                        onShowSettingDialog(true)
-                        onDismiss()
-                    }) {
-                        Icon(
-                            tint = Color.Black,
-                            painter = painterResource(R.drawable.ic_item_settings),
-                            contentDescription = "Rename",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(12.dp)
-                        )
-                    }
+                IconButton(modifier = Modifier.size(70.dp), onClick = {
+                    onShowSettingDialog(true)
+                    onDismiss()
+                }) {
+                    Icon(
+                        tint = Color.Black,
+                        painter = painterResource(R.drawable.ic_item_settings),
+                        contentDescription = "Rename",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                    )
+                }
 
-                    IconButton(modifier = Modifier.size(70.dp), onClick = {
-                        showDialog = false
-                        bleManager.removePersistedDevicesDevice(device)
-                        bleManager.removePairedDevicesDevice(device)
-                        onDismiss()
-                    }) {
-                        Icon(
-                            tint = Color.Red,
-                            painter = painterResource(R.drawable.ic_item_remove),
-                            contentDescription = "Rename",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(12.dp)
-                        )
-                    }
+                IconButton(modifier = Modifier.size(70.dp), onClick = {
+                    bleManager.removePersistedDevicesDevice(device)
+                    bleManager.removePairedDevicesDevice(device)
+                    onDismiss()
+                }) {
+                    Icon(
+                        tint = Color.Red,
+                        painter = painterResource(R.drawable.ic_item_remove),
+                        contentDescription = "Rename",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                    )
                 }
             }
         }
     }
-
-
 }
 
 
@@ -440,87 +442,79 @@ fun ShowRenameModal(
     device: BleManagerDevice.BluetoothManagerDevice,
     onDismiss: () -> Unit
 ) {
-    var showDialog by remember { mutableStateOf(true) }
     val editText = remember { mutableStateOf(device.robotName.toString()) }
 
-    if (showDialog) {
-        Dialog(
-            onDismissRequest = {
-                showDialog = false
-                onDismiss()
-            },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .wrapContentSize()
+                .width(330.dp)
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
         ) {
-            Card(
-                modifier = Modifier
-                    .wrapContentSize()
-                    .width(330.dp)
-                    .padding(16.dp),
-                shape = RoundedCornerShape(24.dp),
+            @Suppress("DEPRECATION")
+            Column(
+                modifier = Modifier.padding(
+                    top = 24.dp,
+                    bottom = 24.dp,
+                    start = 40.dp,
+                    end = 40.dp
+                )
             ) {
-                Column(
-                    modifier = Modifier.padding(
-                        top = 24.dp,
-                        bottom = 24.dp,
-                        start = 40.dp,
-                        end = 40.dp
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Rename",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        modifier = Modifier.height(30.dp)
+                    )
+                    IconButton(
+                        modifier = Modifier.size(18.dp),
+                        onClick = onDismiss,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                TextField(
+                    value = editText.value,
+                    onValueChange = { editText.value = it },
+                    singleLine = true,
+                    modifier = Modifier
+                        .width(240.dp)
+                        .height(70.dp)
+                        .padding(top = 20.dp)
+                    ,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0x4FC4BEBE),
+                        unfocusedContainerColor = Color(0x4FC4BEBE),
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    )
+                )
+                Button(
+                    onClick = {
+                        bleManager.updateDeviceName(device, editText.value)
+                        onDismiss()
+                    },
+                    modifier = Modifier
+                        .width(240.dp)
+                        .height(70.dp)
+                        .padding(top = 30.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF007AFF)
                     )
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Rename",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp,
-                            modifier = Modifier.height(30.dp)
-                        )
-                        IconButton(
-                            modifier = Modifier.size(18.dp),
-                            onClick = {
-                                showDialog = false
-                                onDismiss()
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Close",
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                    TextField(
-                        value = editText.value,
-                        onValueChange = { editText.value = it },
-                        singleLine = true,
-                        modifier = Modifier
-                            .width(240.dp)
-                            .height(70.dp)
-                            .padding(top = 20.dp)
-                        ,
-                        colors = TextFieldDefaults.textFieldColors(
-                            containerColor = Color(0x4FC4BEBE),
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        )
-                    )
-                    Button(
-                        onClick = {
-                            bleManager.updateDeviceName(device, editText.value)
-                            showDialog = false
-                            onDismiss()
-                        },
-                        modifier = Modifier
-                            .width(240.dp)
-                            .height(70.dp)
-                            .padding(top = 30.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF007AFF)
-                        )
-                    ) {
-                        Text("OK", fontSize = 14.sp, color = Color.White)
-                    }
+                    Text("OK", fontSize = 14.sp, color = Color.White)
                 }
             }
         }
@@ -528,15 +522,15 @@ fun ShowRenameModal(
 }
 
 @Composable
-fun showDeviceSettingPage(device: BleManagerDevice.BluetoothManagerDevice) {
-    val intent = Intent(LocalContext.current, DeviceSettingActivity::class.java).apply {
+fun ShowDeviceSettingPage(device: BleManagerDevice.BluetoothManagerDevice) {
+    val context = LocalContext.current
+    val intent = Intent(context, DeviceSettingActivity::class.java).apply {
         putExtra("DEVICE_ADDRESS", device.address)
         putExtra("DEVICE_NAME", device.robotName)
     }
-    var bundle = Bundle()
-    val context = LocalContext.current
     LaunchedEffect(Unit) {
-        startActivity(context, intent, bundle)
+        // Fix: Use context.startActivity(intent) instead of deprecated static startActivity
+        context.startActivity(intent)
     }
 }
 
@@ -547,7 +541,6 @@ fun RobotItemTopView(
     device: BleManagerDevice.BluetoothManagerDevice,
 ) {
     var isEditing by remember { mutableStateOf(false) }
-    var text by remember { mutableStateOf(initialText) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showSettingPage by remember { mutableStateOf(false) }
 
@@ -565,7 +558,7 @@ fun RobotItemTopView(
                 modifier = Modifier
                     .padding(start = 16.dp)
                     .clickable { isEditing = true },
-                text = text,
+                text = initialText,
                 color = Color.Black,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
@@ -588,7 +581,6 @@ fun RobotItemTopView(
         }
         if (isEditing) {
             ShowRobotSettingModal(
-                isEditing,
                 device,
                 onDismiss = { isEditing = false },
                 onShowDialog = { showRenameDialog = it },
@@ -605,7 +597,7 @@ fun RobotItemTopView(
         }
 
         if (showSettingPage) {
-            showDeviceSettingPage(device)
+            ShowDeviceSettingPage(device)
         }
     }
 }
@@ -617,9 +609,3 @@ fun DefaultPreview() {
         MainScreen()
     }
 }
-
-
-
-
-
-

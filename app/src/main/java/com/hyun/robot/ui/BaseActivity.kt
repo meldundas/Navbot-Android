@@ -176,9 +176,10 @@ open class BaseActivity : ComponentActivity(){
 
     @Composable
     fun BackToHome() {
-        val intent = Intent(LocalContext.current, MainActivity::class.java)
-        val bundle = Bundle()
-        ContextCompat.startActivity(LocalContext.current, intent, bundle)
+        val context = LocalContext.current
+        val intent = Intent(context, MainActivity::class.java)
+        // Fix: Use context.startActivity(intent) instead of deprecated ContextCompat.startActivity
+        context.startActivity(intent)
         finish()
     }
 

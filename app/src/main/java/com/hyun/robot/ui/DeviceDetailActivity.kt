@@ -3,7 +3,7 @@ package com.hyun.robot.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
+import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -13,9 +13,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
-import com.hyun.robot.MyApplication
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class DeviceDetailActivity : BaseActivity() {
     private lateinit var context: Context
@@ -25,10 +25,24 @@ class DeviceDetailActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         context = this
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN
+        
+        // Fix: Replace deprecated systemUiVisibility with WindowInsetsControllerCompat
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.getInsetsController(window, window.decorView).let { controller ->
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        
         actionBar?.hide()
-        deviceAddress = intent.getStringExtra("DEVICE_ADDRESS").toString() ?: ""
-        deviceName = intent.getStringExtra("DEVICE_NAME").toString() ?: ""
+        deviceAddress = intent.getStringExtra("DEVICE_ADDRESS") ?: ""
+        deviceName = intent.getStringExtra("DEVICE_NAME") ?: ""
+
+        // Fix: Replace deprecated onBackPressed() with OnBackPressedDispatcher
+        onBackPressedDispatcher.addCallback(this) {
+            val intent = Intent(this@DeviceDetailActivity, MainActivity::class.java)
+            startActivity(intent)
+            finish()
+        }
 
         setContent {
             Surface(
@@ -44,15 +58,4 @@ class DeviceDetailActivity : BaseActivity() {
             }
         }
     }
-    override fun onBackPressed() {
-        val intent = Intent(this, MainActivity::class.java)
-        val bundle = Bundle()
-        ContextCompat.startActivity(this, intent, bundle)
-        super.onBackPressed()
-    }
-
-
 }
-
-
-

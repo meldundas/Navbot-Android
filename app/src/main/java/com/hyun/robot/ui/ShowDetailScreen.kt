@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -12,14 +14,11 @@ import android.os.Looper
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -30,15 +29,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -54,13 +50,13 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -89,7 +85,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.TimeUnit
 
 private var connectCallback: BleConnectCallback? = null
 private var baseHeight: Byte = BleCommand.BASE_HEIGHT
@@ -105,18 +100,16 @@ private var showLoading = true
 private var bDevice: BluetoothDevice? = null
 private var connectCount = 0
 private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-private lateinit var activity: DeviceDetailActivity
 private var isReady = false
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShowDetailScreen(content: DeviceDetailActivity) {
-    activity = content
     var showSplash by remember { mutableStateOf(true) }
     val image = painterResource(R.drawable.bg_detail)
     var gotoHome by remember { mutableStateOf(false) }
-    var deviceName by remember { mutableStateOf(activity.deviceName ?: "") }
-    var loadingText by remember { mutableStateOf("Connecting" ?: "") }
+    var deviceName by remember { mutableStateOf(content.deviceName ?: "") }
+    var loadingText by remember { mutableStateOf("Connecting") }
     var isConnectDevice by remember { mutableStateOf(false) }
     var isToggleReady by remember { mutableStateOf(false) }
 
@@ -158,7 +151,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
             connectCount = 0
             joyY = 0x05
             sendBleJoyXYData()
-            showToast("Connected")
+            showToast(content, "Connected")
         }
 
         override fun onDisconnected(
@@ -168,7 +161,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
         ) {
             isConnectDevice = false
             isToggleOn = false
-            showToast("Disconnected")
+            showToast(content, "Disconnected")
         }
     }
 
@@ -197,7 +190,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                         ) {
                             Icon(
                                 modifier = Modifier.size(40.dp),
-                                imageVector = Icons.Default.KeyboardArrowLeft,
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                                 contentDescription = "BACK"
                             )
                         }
@@ -235,7 +228,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                                         } else {
                                             isToggleReady = false
                                             isReady = false
-                                            showToast("Please Connect 'Navbot_en01' first.")
+                                            showToast(content, "Please Connect 'Navbot_en01' first.")
                                         }
                                     }
                                 }
@@ -259,10 +252,10 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                                         withContext(Dispatchers.IO) {
                                             isToggleOn = !isToggleOn
                                             if (isToggleOn) {
-                                                toConnectDevice()
+                                                toConnectDevice(content)
                                             } else {
                                                 MyApplication.bleManager.disconnectDevice(
-                                                    activity.deviceAddress
+                                                    content.deviceAddress
                                                 )
                                             }
                                         }
@@ -301,7 +294,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                             .weight(7f)
                             .padding(16.dp)
                     ) {
-                        Joystick()
+                        Joystick(content)
                     }
                     Box(
                         modifier = Modifier
@@ -315,7 +308,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            VerticalSliderView("Base Height", "mm", 0.0f, 53, 32,true)
+                            VerticalSliderView(content, "Base Height", "mm", 0.0f, 53, 32,true)
                         }
                     }
                     Box(
@@ -330,7 +323,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            VerticalSliderView("roll", "°", 0.5f, 60, -30,false)
+                            VerticalSliderView(content, "roll", "°", 0.5f, 60, -30,false)
                         }
                     }
                     Box(
@@ -345,7 +338,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            VerticalSliderView("Linear Vel", "mm/s", 0.5f, 400, -200,false)
+                            VerticalSliderView(content, "Linear Vel", "mm/s", 0.5f, 400, -200,false)
                         }
                     }
                     Box(
@@ -360,7 +353,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            VerticalSliderView("Angular Vel", "°/s", 0.5f, 200, -100,false)
+                            VerticalSliderView(content, "Angular Vel", "°/s", 0.5f, 200, -100,false)
                         }
                     }
                     Box(
@@ -374,7 +367,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                             onClick = {
                                 bDevice = MyApplication.bleManager.connectingDevice
                                 if (!isReady) {
-                                    showToast("Please turn on the ‘ROBOT GO’ button first.")
+                                    showToast(content, "Please turn on the ‘ROBOT GO’ button first.")
                                 } else if (isToggleOn && bDevice != null) {
                                     Handler(Looper.getMainLooper()).postDelayed(
                                         {
@@ -384,7 +377,7 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
                                     )
                                 } else {
                                     if (!isToggleOn) {
-                                        toConnectDevice()
+                                        toConnectDevice(content)
                                     }
                                 }
                             },
@@ -404,18 +397,18 @@ fun ShowDetailScreen(content: DeviceDetailActivity) {
             }
         }
         if (gotoHome) {
-            activity.BackToHome()
+            content.BackToHome()
         }
         if (showDialog) {
-            activity.WifiListDialog(onDismiss = { showDialog = false }, onConnect = {})
+            content.WifiListDialog(onDismiss = { showDialog = false }, onConnect = {})
         }
     }
     if (showSplash) {
         if (MyApplication.bleManager.connectDev?.isConnected != true) {
-            activity.LoadingConnectingScreen(
+            content.LoadingConnectingScreen(
                 isConnecting = showSplash,
                 loadingText = loadingText)
-            toConnectDevice()
+            toConnectDevice(content)
         } else {
             bDevice = MyApplication.bleManager.connectDev!!.bluetoothDevice
             showLoading = false
@@ -471,7 +464,7 @@ fun sendBleJumpData() {
 
 }
 
-private fun toConnectDevice() {
+private fun toConnectDevice(activity: DeviceDetailActivity) {
     scope.launch {
         withContext(Dispatchers.IO) {
             MyApplication.bleManager.connectToDevice(
@@ -482,10 +475,10 @@ private fun toConnectDevice() {
     }
 }
 
-private fun showToast(message: String) {
+private fun showToast(context: Context, message: String) {
     CoroutineScope(Dispatchers.IO).launch {
         withContext(Dispatchers.Main) {
-            Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -585,22 +578,21 @@ fun PermissionHandler(
         )
     }
 
-    when (val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()) {
-        null -> {
-        }
-
-        else -> {
-            val isEnabled = bluetoothAdapter.isEnabled
-            if (!isEnabled) {
-                val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                activity.startActivityForResult(enableBtIntent, BaseBlueManager.REQUEST_ENABLE_BT)
-            }
+    val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    val bluetoothAdapter = bluetoothManager.adapter
+    
+    if (bluetoothAdapter != null) {
+        val isEnabled = bluetoothAdapter.isEnabled
+        if (!isEnabled) {
+            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+            currentActivity.startActivityForResult(enableBtIntent, BaseBlueManager.REQUEST_ENABLE_BT)
         }
     }
 }
 
 @Composable
 fun VerticalSlider(
+    context: Context,
     maxHeight: Dp = 200.dp,
     initialProgress: Float = 0.5f,
     onProgressChanged: (Float) -> Unit,
@@ -610,7 +602,7 @@ fun VerticalSlider(
     val maxHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
     val cornerRadiusPx = with(LocalDensity.current) { cornerRadius.toPx() }
     var progressHeight by remember {
-        mutableStateOf(
+        mutableFloatStateOf(
             initialProgress.coerceIn(
                 0f,
                 1f
@@ -626,7 +618,7 @@ fun VerticalSlider(
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (!isReady) {
-                        showToast("Please turn on the ‘ROBOT GO’ button first.")
+                        showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
                     }else if(!canDrag){
 
                     }else {
@@ -650,6 +642,7 @@ fun VerticalSlider(
 
 @Composable
 fun VerticalSliderView(
+    context: Context,
     verticalName: String,
     verticalUnit: String,
     baseVolume: Float,
@@ -661,28 +654,29 @@ fun VerticalSliderView(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxSize()
     ) {
-        var volume by remember { mutableStateOf(baseVolume) }
+        var volume by remember { mutableFloatStateOf(baseVolume) }
 
         VerticalSlider(
+            context = context,
             initialProgress = volume,
             onProgressChanged = {
                 if (!isReady) {
-                    showToast("Please turn on the ‘ROBOT GO’ button first.")
+                    showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
                 }else{
                     volume = it
                     baseHeight =
                         BleCommand.intToUnsignedByte((volume * verticalPlusValue + verticalAddValue).toInt())
                     if (!isReady) {
-                        showToast("Please turn on the ‘ROBOT GO’ button first.")
+                        showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
                     } else if (isToggleOn) {
                         if (showLoading) {
-                            toConnectDevice()
+                            toConnectDevice(context as DeviceDetailActivity)
                         } else {
                             bDevice = MyApplication.bleManager.connectingDevice
                             sendBleSettingData()
                         }
                     } else {
-                        toConnectDevice()
+                        toConnectDevice(context as DeviceDetailActivity)
                     }
                 }
             },
@@ -721,13 +715,13 @@ fun Offset.applyDeadZone(threshold: Float = 2f): Offset {
 
 @Composable
 fun Joystick(
+    context: Context,
     modifier: Modifier = Modifier,
     joystickSize: Dp = 130.dp
 ) {
     val radius = joystickSize / 2
     val center = remember { Offset(0.5f, 0.5f) }
     var buttonOffset by remember { mutableStateOf(Offset(0f, 0f)) }
-    var lastSendTime by remember { mutableStateOf(0L) }
     var isJoystickActive = false
     val kalmanFilter = remember { BaseActivity.KalmanFilterProcessor() }
     var direction by remember { mutableStateOf(Offset(0f, 0f)) }
@@ -756,15 +750,14 @@ fun Joystick(
                 ) && raw1.y != 0.0f && raw1.x != 0.0f
             ) {
                 isJoystickActive = true
-                sendJoystickData(clamped)
-                lastSendTime = System.currentTimeMillis()
+                sendJoystickData(context as DeviceDetailActivity, clamped)
             } else {
                 if (isJoystickActive) {
                     isJoystickActive = false
                 }
             }
             if (isJoystickActive) {
-                sendJoystickData(direction)
+                sendJoystickData(context as DeviceDetailActivity, direction)
             }
         }
     }
@@ -776,7 +769,7 @@ fun Joystick(
                 detectDragGestures(
                     onDrag = { _, dragAmount ->
                         if (!isReady) {
-                            showToast("Please turn on the ‘ROBOT GO’ button first.")
+                            showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
                         } else {
                             val newOffset = Offset(
                                 x = (buttonOffset.x + dragAmount.x).coerceIn(
@@ -798,7 +791,7 @@ fun Joystick(
                     },
                     onDragEnd = {
                         if (!isReady) {
-                            showToast("Please turn on the ‘ROBOT GO’ button first.")
+                            showToast(context, "Please turn on the ‘ROBOT GO’ button first.")
                         } else{
                             buttonOffset = Offset(0f, 0f)
                             joyX = 0X00
@@ -812,7 +805,7 @@ fun Joystick(
                                     100
                                 )
                             } else {
-                                toConnectDevice()
+                                toConnectDevice(context as DeviceDetailActivity)
                             }
                         }
                     }
@@ -841,7 +834,7 @@ private fun Offset.normalize(): Offset {
     return Offset(x / length, y / length)
 }
 
-private fun sendJoystickData(direction: Offset) {
+private fun sendJoystickData(activity: DeviceDetailActivity, direction: Offset) {
     val (joyDataX, joyDataY) = when {
         direction.isSpecified -> {
             val clampedY = (-direction.y).coerceIn(-100f, 100f)
@@ -856,7 +849,7 @@ private fun sendJoystickData(direction: Offset) {
     if (!showLoading && bDevice != null) {
         sendBleJoyXYData()
     } else {
-        toConnectDevice()
+        toConnectDevice(activity)
     }
 
 }
